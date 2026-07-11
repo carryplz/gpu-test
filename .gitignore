@@ -9,3 +9,5 @@ results/
 report/figures/*.png
 *.egg-info/
 .pytest_cache/
+tests
+huggingface

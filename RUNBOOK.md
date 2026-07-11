@@ -37,7 +37,7 @@ cp .env.example .env   # fill in HF_TOKEN
 export $(grep -v '^#' .env | xargs)   # or use direnv/dotenv loader of choice
 
 bash setup/install.sh
-source venv/bin/activate
+source .venv/bin/activate
 python setup/verify_env.py   # confirms H100 80GB detected, vllm/bnb importable, writes results/env_info.json
 
 python setup/download_models.py --model qwen2.5-32b

@@ -18,10 +18,10 @@ if ! python3 -c "import sys; assert sys.version_info >= (3, 10)" 2>/dev/null; th
 fi
 
 if [ ! -d venv ]; then
-  python3 -m venv venv
+  python3 -m venv .venv
 fi
 # shellcheck disable=SC1091
-source venv/bin/activate
+source .venv/bin/activate
 
 pip install --upgrade pip
 pip install -r requirements-remote.txt
