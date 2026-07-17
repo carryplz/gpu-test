@@ -11,3 +11,4 @@ report/figures/*.png
 .pytest_cache/
 tests
 huggingface
+.venv*
