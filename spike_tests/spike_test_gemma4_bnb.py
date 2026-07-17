@@ -5,6 +5,16 @@ gemma-4-31B is a brand-new dense architecture (Gemma4ForConditionalGeneration),
 so generic bnb nn.Linear-replacement should work in principle, but is
 unverified. Run BEFORE trusting any gemma4-31b rows in the full run_matrix.
 
+Loads via benchmark.engine.build_llm (not a raw vllm.LLM(..., hf_overrides=...)
+call) -- vLLM's hf_overrides={"quantization_config": {...}} mechanism is
+confirmed broken (weight-shape AssertionError, reproduced across every vLLM
+version from 0.9.2 to 0.25.1; see spike_test_error_report.md) and is no
+longer what the real benchmark run uses. Pulling the real gemma4-31b/
+int8_bnb entry out of configs/run_matrix.yaml via find_entries() (which
+already carries trust_remote_code and the limit_mm_per_prompt vllm_extra_arg
+-- build_llm applies both generically) means this spike test exercises the
+exact same path Phase 3 will use, so its PASS/FAIL is representative.
+
 PASS -> proceed with configs/run_matrix.yaml as-is.
 FAIL -> drop bnb for this model and use vLLM's officially documented gemma4
         quantization path instead (W4A16/int8-per-channel), noting the
@@ -15,26 +25,32 @@ Usage:
     python spike_tests/spike_test_gemma4_bnb.py
 """
 import sys
+from pathlib import Path
 
-MODEL = "google/gemma-4-31B"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))  # so `benchmark` is importable regardless of cwd
+
+import yaml
+
+from benchmark.engine import build_llm
+from benchmark.run_one_combo import find_entries
+
+MODEL_ID = "gemma4-31b"
+QUANT_LEVEL = "int8_bnb"
+RUN_MATRIX_PATH = REPO_ROOT / "configs" / "run_matrix.yaml"
 
 
 def main() -> None:
-    from vllm import LLM, SamplingParams
+    from vllm import SamplingParams
 
-    print(f"Loading {MODEL} with bnb INT8 (trust_remote_code=True, text-only) ...")
+    with open(RUN_MATRIX_PATH) as f:
+        run_matrix = yaml.safe_load(f)
+    model_entry, run_entry = find_entries(run_matrix, MODEL_ID, QUANT_LEVEL)
+    defaults = run_matrix["defaults"]
+
+    print(f"Loading {model_entry['hf_repo']} ({MODEL_ID}/{QUANT_LEVEL}) via build_llm ...")
     try:
-        llm = LLM(
-            model=MODEL,
-            dtype="bfloat16",
-            quantization="bitsandbytes",
-            hf_overrides={"quantization_config": {"load_in_8bit": True, "load_in_4bit": False}},
-            trust_remote_code=True,
-            limit_mm_per_prompt={"image": 0, "audio": 0, "video": 0},
-            tensor_parallel_size=1,
-            max_model_len=4096,
-            gpu_memory_utilization=0.90,
-        )
+        llm = build_llm(model_entry, run_entry, defaults)
     except Exception as e:
         print(f"FAIL: model load raised an exception: {e}", file=sys.stderr)
         print(

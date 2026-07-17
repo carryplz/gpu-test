@@ -112,8 +112,16 @@ models:
     known_risk: >
       bnb support for MoE/Mixtral has historically been unstable in vLLM
       (see vllm-project/vllm PR #20061, issue #20480, RFC #39583).
-      Run spike_tests/spike_test_mixtral_bnb.py before trusting these entries;
-      fall back to HF transformers + BitsAndBytesConfig for this model if it fails.
+      Run spike_tests/spike_test_mixtral_bnb.py before trusting these entries.
+      CONFIRMED (2026-07-17, see spike_test_error_report.md): the transformers-native
+      fallback itself hits a single-GPU capacity wall for int8_baseline on a 95GB H100 --
+      Mixtral is ~94GB in fp16, and bitsandbytes' int8 quantization path OOMs before
+      finishing; device_map="auto" then refuses to CPU-offload without explicitly setting
+      llm_int8_enable_fp32_cpu_offload=True plus a hand-crafted per-module device_map
+      (real Mixtral/MoE-specific work, not done yet -- deferred by user decision).
+      int4_nf4_bnb/int4_nf4_doublequant_bnb rows are untested and may or may not hit the
+      same OOM. Do not trust any mixtral-8x7b bnb row until this is resolved or the
+      quant_level is confirmed to fit.
     runs:
       - quant_level: int8_baseline
         quant_method: bitsandbytes

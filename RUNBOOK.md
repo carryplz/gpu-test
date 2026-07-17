@@ -74,14 +74,26 @@ rather than in-flight quantization via a config override). The
 `patched_config` fallback it used to select have been removed -- both were
 broken the same way.
 
-`spike_test_mixtral_bnb.py` and `spike_test_gemma4_bnb.py` are still
-relevant -- MoE+bnb instability and gemma4's untested-with-bnb status are
-real, architecture-specific risks independent of the fix above -- but as
-currently written they still exercise the old `hf_overrides` path, not the
-new `build_llm()` path, so their PASS/FAIL isn't representative of what
-Phase 3 will actually do. Until they're adapted to call
-`benchmark.engine.build_llm` directly, spot-check the real Mixtral/gemma4
-bnb legs against `build_llm` before trusting Phase 3 for those two models.
+`spike_test_mixtral_bnb.py` and `spike_test_gemma4_bnb.py` now call
+`benchmark.engine.build_llm` directly (via `find_entries()` against the real
+`configs/run_matrix.yaml` rows -- `mixtral-8x7b`/`int8_baseline` and
+`gemma4-31b`/`int8_bnb`), so their PASS/FAIL is representative of what
+Phase 3 will actually do for those two models. Results as of 2026-07-17:
+
+- `spike_test_gemma4_bnb.py`: **PASS**. Loads and generates. NOTE: the
+  generated text was incoherent/off-topic in one run (answered a different
+  question than asked) -- non-empty so it clears the script's PASS bar, but
+  worth a manual quality spot-check before trusting gemma4 bnb outputs, not
+  just that it loads.
+- `spike_test_mixtral_bnb.py`: **FAIL -- confirmed GPU-capacity limit, not a
+  code bug.** Mixtral-8x7B is ~94GB in fp16, essentially the whole 95GB H100.
+  bitsandbytes int8 quantization OOMs before finishing with
+  `device_map="cuda:0"`, and `device_map="auto"` refuses to CPU-offload
+  without `llm_int8_enable_fp32_cpu_offload=True` plus a hand-crafted
+  per-module `device_map` (Mixtral/MoE-specific work, not yet done -- see
+  `spike_test_error_report.md`'s 2026-07-17 update and `configs/run_matrix.yaml`'s
+  updated `known_risk` field). **Do not run any mixtral-8x7b bnb row in Phase 3
+  until this is resolved.**
 
 If `spike_test_mixtral_bnb.py` or `spike_test_gemma4_bnb.py` FAILs: see the
 fallback notes printed by the script and in `configs/run_matrix.yaml`'s

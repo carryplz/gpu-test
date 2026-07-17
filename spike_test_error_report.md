@@ -257,3 +257,47 @@ checkpoints (only the small stand-in model was used for the fix verification, to
 multi-GB re-quantization passes during this investigation). Recommend re-running
 `spike_tests/spike_test_mixtral_bnb.py` / `spike_test_gemma4_bnb.py` against this new
 `build_llm()` path (or a small adaptation of them) before trusting the full run matrix.
+
+## Update 2026-07-17: real-checkpoint spike tests, and a new Mixtral capacity limit
+
+Both `spike_test_mixtral_bnb.py` and `spike_test_gemma4_bnb.py` were rewritten to call
+`benchmark.engine.build_llm` (via `find_entries()` against the real `configs/run_matrix.yaml`
+entries) instead of a raw `vllm.LLM(..., hf_overrides={...})` call, then run against the
+real checkpoints on the H100 box.
+
+**gemma4-31B (`int8_bnb`): PASS.** Loads and generates via `build_llm`'s pre-quantize-and-cache
+path. One caveat worth flagging: the generated text for the prompt "What is the capital of
+France? Answer in one word." was `'What is the capital of the United States? Answer in one
+word.'` -- non-empty (so it clears the script's own PASS bar), but incoherent/off-topic. This
+may be a genuine bnb+gemma4 output-quality issue (exactly the "generic bnb nn.Linear-replacement
+should work in principle, but is unverified" risk the script's docstring already flags) rather
+than a loading problem. Worth a closer manual check before trusting gemma4 bnb quality in the
+real run, independent of the loading-mechanism fix.
+
+**mixtral-8x7b (`int8_baseline`): FAIL, and it's a real GPU-capacity limit, not a code bug.**
+Mixtral-8x7B is ~94GB in fp16/float16 -- essentially the entire 95GB H100. Two attempts:
+- `_quantize_and_cache`'s original `device_map="cuda:0"`: `torch.cuda.OutOfMemoryError` --
+  "Tried to allocate 896.00 MiB. GPU 0 has a total capacity of 93.09 GiB of which 620.56 MiB
+  is free. Process ... has 92.47 GiB memory in use." The int8 quantization pass does not stay
+  memory-efficient throughout loading for this model/size -- by the time all 291 weight shards
+  finished loading, usage had already climbed to ~92GB, most of the GPU's capacity, leaving no
+  room to finish.
+- Changed `device_map="cuda:0"` to `device_map="auto"` in `_quantize_and_cache` (this fix is
+  kept -- it's harmless/beneficial for models that do fit on one GPU, confirmed by gemma4-31B's
+  pass above). For Mixtral, transformers refused outright: "Some modules are dispatched on the
+  CPU or the disk. Make sure you have enough GPU RAM to fit the quantized model. If you want to
+  dispatch the model on the CPU or the disk while keeping these modules in 32-bit, you need to
+  set `llm_int8_enable_fp32_cpu_offload=True` and pass a custom `device_map`." bitsandbytes
+  int8 requires explicitly opting into CPU offload plus a hand-crafted `device_map` naming which
+  specific Mixtral modules (e.g. certain MoE expert layers) go to CPU vs GPU -- genuinely
+  model/architecture-specific engineering, not a one-line fix.
+
+**Decision (user-approved): document as a known limitation for now, don't build the custom
+device_map/cpu-offload solution yet.** `configs/run_matrix.yaml`'s `known_risk` field for
+`mixtral-8x7b` and `RUNBOOK.md` have been updated to reflect that even the documented
+transformers-native fallback for Mixtral hits a single-GPU capacity wall for `int8_baseline`
+on this hardware, separate from (and in addition to) the MoE+bnb kernel-stability risk the
+spike test was originally written to check. `int4_nf4_bnb`/`int4_nf4_doublequant_bnb` were not
+tested for Mixtral -- worth trying since the target quantized footprint is much smaller
+(~24GB vs int8's ~47GB), though the OOM above happened *during* loading (before quantization
+finished), so it's not guaranteed a smaller target size avoids the same transient spike.

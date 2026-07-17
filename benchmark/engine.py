@@ -43,7 +43,7 @@ def _quantize_and_cache(model_entry: dict, run_entry: dict, cache_dir: str) -> s
         model_entry["hf_repo"],
         quantization_config=bnb_config,
         trust_remote_code=trust_remote_code,
-        device_map="cuda:0",
+        device_map="auto",
     )
     tokenizer = AutoTokenizer.from_pretrained(model_entry["hf_repo"], trust_remote_code=trust_remote_code)
 
@@ -58,9 +58,11 @@ def _quantize_and_cache(model_entry: dict, run_entry: dict, cache_dir: str) -> s
     return str(dst_dir)
 
 
-def build_llm(model_entry: dict, run_entry: dict, defaults: dict, quantized_cache_dir: str = DEFAULT_QUANTIZED_CACHE_DIR):
-    from vllm import LLM
-
+def _build_base_kwargs(model_entry: dict, run_entry: dict, defaults: dict) -> dict:
+    """Assembles the vLLM LLM() kwargs common to every quant_method (dtype,
+    parallelism, context length, memory budget, and any per-model
+    vllm_extra_args), before quantization-specific kwargs are added. Pure
+    dict-in/dict-out -- no vllm/torch/transformers import required."""
     kwargs: dict[str, Any] = {
         "dtype": run_entry["dtype"],
         "tensor_parallel_size": defaults.get("tensor_parallel_size", 1),
@@ -72,6 +74,13 @@ def build_llm(model_entry: dict, run_entry: dict, defaults: dict, quantized_cach
     extra = model_entry.get("vllm_extra_args") or {}
     for k, v in extra.items():
         kwargs[k] = json.loads(v) if isinstance(v, str) and v.strip().startswith(("{", "[")) else v
+    return kwargs
+
+
+def build_llm(model_entry: dict, run_entry: dict, defaults: dict, quantized_cache_dir: str = DEFAULT_QUANTIZED_CACHE_DIR):
+    from vllm import LLM
+
+    kwargs = _build_base_kwargs(model_entry, run_entry, defaults)
 
     if run_entry["quant_method"] == "bitsandbytes":
         kwargs["model"] = _quantize_and_cache(model_entry, run_entry, quantized_cache_dir)
