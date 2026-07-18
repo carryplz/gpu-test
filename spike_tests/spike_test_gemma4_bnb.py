@@ -8,7 +8,7 @@ unverified. Run BEFORE trusting any gemma4-31b rows in the full run_matrix.
 Loads via benchmark.engine.build_llm (not a raw vllm.LLM(..., hf_overrides=...)
 call) -- vLLM's hf_overrides={"quantization_config": {...}} mechanism is
 confirmed broken (weight-shape AssertionError, reproduced across every vLLM
-version from 0.9.2 to 0.25.1; see spike_test_error_report.md) and is no
+version from 0.9.2 to 0.25.1; see docs/spike_test_error_report.md) and is no
 longer what the real benchmark run uses. Pulling the real gemma4-31b/
 int8_bnb entry out of configs/run_matrix.yaml via find_entries() (which
 already carries trust_remote_code and the limit_mm_per_prompt vllm_extra_arg

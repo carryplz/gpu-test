@@ -6,14 +6,14 @@ first thing spike_tests/ must validate on the remote H100 box.
 Quantization path: vLLM's in-flight bnb quantization driven by
 hf_overrides={"quantization_config": bnb_args} does not work -- it crashes
 with a weight-shape AssertionError in vLLM's weight_loader, reproduced across
-every vLLM version from 0.9.2 to 0.25.1 (see spike_test_error_report.md).
+every vLLM version from 0.9.2 to 0.25.1 (see docs/spike_test_error_report.md).
 Instead, bnb rungs are pre-quantized offline with transformers +
 BitsAndBytesConfig and saved to a local cache dir; vLLM then loads that cache
 dir directly with no quantization=/hf_overrides at all, since vLLM correctly
 infers quantization from a checkpoint whose config.json and weight tensors
 are already genuinely quantized (the officially documented "pre-quantized
 checkpoint" pattern). Note this can roughly double a model's on-disk
-footprint (full-precision source + quantized cache) -- see RUNBOOK.md's
+footprint (full-precision source + quantized cache) -- see docs/RUNBOOK.md's
 disk-space guidance.
 """
 import gc

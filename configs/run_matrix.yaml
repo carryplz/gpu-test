@@ -113,7 +113,7 @@ models:
       bnb support for MoE/Mixtral has historically been unstable in vLLM
       (see vllm-project/vllm PR #20061, issue #20480, RFC #39583).
       Run spike_tests/spike_test_mixtral_bnb.py before trusting these entries.
-      CONFIRMED (2026-07-17, see spike_test_error_report.md): this is a structural
+      CONFIRMED (2026-07-17, see docs/spike_test_error_report.md): this is a structural
       incompatibility, not just a memory/OOM issue. This transformers version stores all 8
       MoE experts as two fused 3D parameter tensors per layer (gate_up_proj/down_proj) rather
       than separate nn.Linear modules; bitsandbytes' int8 path only quantizes nn.Linear

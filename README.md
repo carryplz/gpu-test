@@ -60,7 +60,7 @@ report/               results.csv -> report/report.md + figures/*.png
 
 ## Quickstart
 
-See `RUNBOOK.md` for the full step-by-step sequence. Short version:
+See `docs/RUNBOOK.md` for the full step-by-step sequence. Short version:
 
 ```bash
 # locally (no GPU needed)
@@ -74,7 +74,7 @@ pytest tests/
 # request meta-llama/Llama-3.3-70B-Instruct gated access on HF NOW (day 1) --
 # approval can take hours to a few days and should overlap with everything else
 
-# then rsync/clone this repo to the rented H100 box and follow RUNBOOK.md
+# then rsync/clone this repo to the rented H100 box and follow docs/RUNBOOK.md
 ```
 
 ## Known risks

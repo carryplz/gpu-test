@@ -7,7 +7,7 @@ Supersedes spike_test_bnb_quant_args.py, which checked whether vLLM's
 hf_overrides={"quantization_config": {...}} propagated bnb_4bit_use_double_quant.
 That mechanism was confirmed broken (weight-shape AssertionError in vLLM's
 loader, reproduced across every vLLM version from 0.9.2 to 0.25.1 -- see
-spike_test_error_report.md) and benchmark/engine.py::build_llm no longer uses
+docs/spike_test_error_report.md) and benchmark/engine.py::build_llm no longer uses
 it. This test instead calls build_llm(...) directly -- the same function
 run_one_combo.py uses -- so it actually exercises the current production
 code path instead of a deprecated one.
