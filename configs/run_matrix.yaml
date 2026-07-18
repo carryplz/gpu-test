@@ -2,7 +2,7 @@ schema_version: 1
 
 defaults:
   tensor_parallel_size: 1
-  max_model_len: 8192
+  max_model_len: 32768
   gpu_memory_utilization: 0.90
   seed: 42
   trust_remote_code: false
@@ -42,7 +42,7 @@ models:
           bnb_4bit_use_double_quant: true
 
   - id: gemma4-31b
-    hf_repo: google/gemma-4-31B
+    hf_repo: google/gemma-4-31B-it
     trust_remote_code: true
     vllm_extra_args:
       limit_mm_per_prompt: '{"image": 0, "audio": 0, "video": 0}'
@@ -79,7 +79,7 @@ models:
   - id: llama3.3-70b
     hf_repo: meta-llama/Llama-3.3-70B-Instruct
     gated: true
-    max_model_len: 4096
+    max_model_len: 32768
     gpu_memory_utilization: 0.92
     runs:
       - quant_level: int8_baseline
