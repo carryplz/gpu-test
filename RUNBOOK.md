@@ -85,15 +85,20 @@ Phase 3 will actually do for those two models. Results as of 2026-07-17:
   question than asked) -- non-empty so it clears the script's PASS bar, but
   worth a manual quality spot-check before trusting gemma4 bnb outputs, not
   just that it loads.
-- `spike_test_mixtral_bnb.py`: **FAIL -- confirmed GPU-capacity limit, not a
-  code bug.** Mixtral-8x7B is ~94GB in fp16, essentially the whole 95GB H100.
-  bitsandbytes int8 quantization OOMs before finishing with
-  `device_map="cuda:0"`, and `device_map="auto"` refuses to CPU-offload
-  without `llm_int8_enable_fp32_cpu_offload=True` plus a hand-crafted
-  per-module `device_map` (Mixtral/MoE-specific work, not yet done -- see
-  `spike_test_error_report.md`'s 2026-07-17 update and `configs/run_matrix.yaml`'s
-  updated `known_risk` field). **Do not run any mixtral-8x7b bnb row in Phase 3
-  until this is resolved.**
+- `spike_test_mixtral_bnb.py`: **FAIL -- structural incompatibility, not a
+  code bug or a fixable memory issue.** This transformers version stores all
+  8 MoE experts as fused 3D parameter tensors per layer, not `nn.Linear`
+  modules; bitsandbytes' int8 path only quantizes `nn.Linear` instances, so
+  it silently skips ~96% of Mixtral's parameters (the experts) and only
+  quantizes the small attention slice. The resulting checkpoint is barely
+  smaller than the original ~94GB model, which is why it OOMs on the 95GB
+  H100 -- no `device_map`/CPU-offload/streaming technique fixes this, since
+  there's nothing meaningful being saved. See `spike_test_error_report.md`'s
+  2026-07-17 updates and `configs/run_matrix.yaml`'s `known_risk` field for
+  the full investigation and possible future directions (a pre-quantized
+  community checkpoint, or a transformers/bitsandbytes version with
+  fused-MoE-tensor support). **Do not run any mixtral-8x7b bnb row in Phase 3
+  until one of those is resolved.**
 
 If `spike_test_mixtral_bnb.py` or `spike_test_gemma4_bnb.py` FAILs: see the
 fallback notes printed by the script and in `configs/run_matrix.yaml`'s

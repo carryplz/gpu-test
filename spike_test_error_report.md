@@ -292,12 +292,51 @@ Mixtral-8x7B is ~94GB in fp16/float16 -- essentially the entire 95GB H100. Two a
   specific Mixtral modules (e.g. certain MoE expert layers) go to CPU vs GPU -- genuinely
   model/architecture-specific engineering, not a one-line fix.
 
-**Decision (user-approved): document as a known limitation for now, don't build the custom
-device_map/cpu-offload solution yet.** `configs/run_matrix.yaml`'s `known_risk` field for
-`mixtral-8x7b` and `RUNBOOK.md` have been updated to reflect that even the documented
-transformers-native fallback for Mixtral hits a single-GPU capacity wall for `int8_baseline`
-on this hardware, separate from (and in addition to) the MoE+bnb kernel-stability risk the
-spike test was originally written to check. `int4_nf4_bnb`/`int4_nf4_doublequant_bnb` were not
-tested for Mixtral -- worth trying since the target quantized footprint is much smaller
-(~24GB vs int8's ~47GB), though the OOM above happened *during* loading (before quantization
-finished), so it's not guaranteed a smaller target size avoids the same transient spike.
+**Decision (user-approved, first pass): document as a known limitation for now, don't build
+the custom device_map/cpu-offload solution yet.**
+
+## Update 2026-07-17 (2): the OOM is a symptom, not the root cause -- MoE experts aren't quantized at all
+
+Before building a CPU-offload or custom streaming quantizer for Mixtral, inspected the actual
+model structure (via `accelerate.init_empty_weights()` + `AutoModelForCausalLM.from_config`,
+no real memory needed):
+
+```python
+experts = model.model.layers[0].mlp.experts     # type: MixtralExperts
+experts.gate_up_proj.shape  # (8, 28672, 4096), bfloat16
+experts.down_proj.shape     # (8, 4096, 14336), bfloat16
+```
+
+This transformers version stores all 8 experts' weights as two **fused 3D parameter tensors**
+per layer (`gate_up_proj`, `down_proj`) rather than 8 separate `nn.Linear` modules. bitsandbytes'
+int8 path (`transformers.integrations.bitsandbytes.replace_with_bnb_linear`) works by swapping
+`nn.Linear` module instances for `bnb.nn.Linear8bitLt` -- it has no mechanism to reach into a
+raw fused parameter tensor and quantize it.
+
+The parameter math confirms this explains the whole OOM: the two fused expert tensors are
+~1.41B params/layer x 32 layers ~= **45B of Mixtral's ~47B total (96%)**. Attention
+(`q_proj`/`k_proj`/`v_proj`/`o_proj`, genuine `nn.Linear` modules) is only ~1-2B params. So
+`load_in_8bit=True` silently quantizes only the tiny attention slice and leaves ~96% of the
+model in full bf16 -- **the "quantized" checkpoint is barely smaller than the original**,
+regardless of `device_map`, CPU offload, or any streaming/memory-management technique. The
+~92GB peak observed earlier isn't a transient sequencing artifact to engineer around; it's
+close to the model's real (mostly-unquantized) steady-state size.
+
+**This means neither of the two previously-discussed fixes (custom device_map + fp32 CPU
+offload, or a hand-rolled one-layer-at-a-time streaming quantizer) would actually produce a
+genuinely int8-quantized Mixtral** -- both would faithfully preserve this same
+mostly-unquantized outcome, just without crashing. Not worth building. This also matches
+what the original spike test's docstring already gestured at (MoE+bnb support added
+incrementally in vLLM, PR #20061/issue #20480) -- generic Linear-swap quantization has a
+known structural gap for MoE architectures across the ecosystem, not something specific to
+this repo's setup.
+
+**Decision (user-approved, second pass): document this structural incompatibility and hold
+off.** Possible future directions, not pursued now: (a) check Hugging Face for a
+community-published, already-quantized Mixtral checkpoint (e.g. GPTQ/AWQ/bnb) built with
+MoE-aware tooling rather than plain `transformers.from_pretrained(quantization_config=...)`;
+(b) check for a newer transformers/bitsandbytes release with explicit support for quantizing
+fused-tensor MoE modules like `MixtralExperts`. `configs/run_matrix.yaml`'s `known_risk` field
+for `mixtral-8x7b` and `RUNBOOK.md` have been updated accordingly. `int4_nf4_bnb`/
+`int4_nf4_doublequant_bnb` were not separately tested -- the same structural gap applies
+regardless of target bit-width, so they're expected to hit the same outcome.
