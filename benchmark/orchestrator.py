@@ -8,7 +8,7 @@ model's combos after a config fix.
 Usage:
     python -m benchmark.orchestrator --config configs/run_matrix.yaml
     python -m benchmark.orchestrator --resume
-    python -m benchmark.orchestrator --only mixtral-8x7b
+    python -m benchmark.orchestrator --only llama3.3-70b
 """
 import argparse
 import subprocess
@@ -33,9 +33,6 @@ def main() -> None:
     parser.add_argument("--results-dir", default="results")
     parser.add_argument("--resume", action="store_true", help="skip combos that already have complete results")
     parser.add_argument("--only", help="only run combos for this model_id")
-    parser.add_argument(
-        "--quant-config-mode", choices=["hf_overrides", "patched_config"], default="hf_overrides",
-    )
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -73,7 +70,6 @@ def main() -> None:
                     "--config", args.config,
                     "--tasks-config", args.tasks_config,
                     "--results-dir", args.results_dir,
-                    "--quant-config-mode", args.quant_config_mode,
                 ],
                 timeout=COMBO_TIMEOUT_SECONDS,
             )

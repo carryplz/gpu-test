@@ -2,8 +2,8 @@
 all 3 tasks, then exits. Always launched as its OWN subprocess by
 benchmark/orchestrator.py (never looped in-process) so process exit
 guarantees full CUDA context teardown between combos -- important given the
-new gemma4 architecture and uncertain Mixtral+bnb MoE support (see plan
-risks). GPU-only; not runnable on the local authoring machine.
+new gemma4 architecture and the large per-model memory footprints involved.
+GPU-only; not runnable on the local authoring machine.
 
 Usage:
     python -m benchmark.run_one_combo --model-id qwen2.5-32b --quant-level int8_bnb
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import yaml
 
-from benchmark.engine import build_llm, build_llm_with_patched_config
+from benchmark.engine import build_llm
 from benchmark.memory_monitor import MemoryMonitor
 from benchmark.task_runners import run_task_a, run_task_b, run_task_c
 
@@ -42,13 +42,6 @@ def main() -> None:
     parser.add_argument("--config", default="configs/run_matrix.yaml")
     parser.add_argument("--tasks-config", default="configs/tasks.yaml")
     parser.add_argument("--results-dir", default="results")
-    parser.add_argument(
-        "--quant-config-mode",
-        choices=["hf_overrides", "patched_config"],
-        default="hf_overrides",
-        help="Switch to 'patched_config' if spike_test_bnb_quant_args.py shows "
-             "hf_overrides doesn't propagate bnb_4bit_use_double_quant correctly.",
-    )
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -66,8 +59,7 @@ def main() -> None:
 
     with MemoryMonitor(out_csv_path=str(combo_dir / "vram_timeseries.csv")) as monitor:
         t0 = time.time()
-        builder = build_llm_with_patched_config if args.quant_config_mode == "patched_config" else build_llm
-        llm = builder(model_entry, run_entry, defaults)
+        llm = build_llm(model_entry, run_entry, defaults)
         load_time_sec = time.time() - t0
         print(f"Model loaded in {load_time_sec:.1f}s")
 
